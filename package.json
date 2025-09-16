@@ -27,7 +27,6 @@
   },
   "repository": "github:sntran/rclone.js",
   "scripts": {
-    "postinstall": "node bin/rclone.js selfupdate",
     "test": "node test test/*-test.js"
   },
   "dependencies": {

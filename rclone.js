@@ -41,8 +41,19 @@ const api = function(...args) {
   let flags = args.pop();
   let childOptions = {};
 
+  let rcloneExecutable = RCLONE_EXECUTABLE;
+
   if (!!flags && flags.constructor === Object) {
     Object.entries(flags).forEach(([key, value]) => {
+      if (key === 'abortSignal') {
+        return;
+      }
+
+      if (key === 'rcloneExecutable') {
+        rcloneExecutable = value;
+        return;
+      }
+
       if (CHILD_OPTIONS.indexOf(key) > -1) {
         childOptions[key] = value;
         return;
@@ -72,33 +83,48 @@ const api = function(...args) {
     args.push(flags);
   }
 
-  return spawn(RCLONE_EXECUTABLE, args, childOptions);
+  return spawn(rcloneExecutable, args, childOptions);
 }
 
 // Promise-based API.
 const promises = api.promises = function(...args) {
+  let abortSignal = undefined
+  if (args.length > 0 && args[args.length - 1] && typeof args[args.length - 1] === 'object' && args[args.length - 1].constructor === Object) {
+    abortSignal = args[args.length - 1]['abortSignal']
+  }
   return new Promise((resolve, reject) => {
     const subprocess = api(...args);
 
+    if (abortSignal) {
+      abortSignal.addEventListener("abort", function() {
+        subprocess.kill('SIGTERM');
+
+        setTimeout(() => {
+          try {
+            subprocess.kill('SIGKILL');
+          } catch (_e) {
+          }
+        }, 3000);
+      });
+    }
+
     subprocess.on("error", (error) => {
       reject(error);
+    });
+
+    subprocess.on("exit", (code, signal) => {
+      resolve([code, signal, Buffer.concat(stdout), Buffer.concat(stderr)]);
     });
 
     const stdout = [], stderr = [];
     subprocess.stdout.on("data", (chunk) => {
       stdout.push(chunk);
     });
-    subprocess.stdout.on("end", () => {
-      resolve(Buffer.concat(stdout));
-    });
+
     subprocess.stderr.on("data", (chunk) => {
       stderr.push(chunk);
     });
-    subprocess.stderr.on("end", () => {
-      if (stderr.length) {
-        reject(Buffer.concat(stderr));
-      }
-    });
+
   });
 };
 
