@@ -95,6 +95,10 @@ const promises = api.promises = function(...args) {
   return new Promise((resolve, reject) => {
     const subprocess = api(...args);
 
+    let result = undefined;
+    const statusResolved = 1;
+    const statusRejected = 2;
+
     if (abortSignal) {
       abortSignal.addEventListener("abort", function() {
         subprocess.kill('SIGTERM');
@@ -104,16 +108,27 @@ const promises = api.promises = function(...args) {
             subprocess.kill('SIGKILL');
           } catch (_e) {
           }
+
+          if (result === undefined) {
+            reject(error);
+            result = statusRejected;
+          }
         }, 3000);
       });
     }
 
     subprocess.on("error", (error) => {
-      reject(error);
+      if (result === undefined) {
+        reject(error);
+        result = statusRejected;
+      }
     });
 
     subprocess.on("exit", (code, signal) => {
-      resolve([code, signal, Buffer.concat(stdout), Buffer.concat(stderr)]);
+      if (result === undefined) {
+        resolve([code, signal, Buffer.concat(stdout), Buffer.concat(stderr)]);
+        result = statusResolved;
+      }
     });
 
     const stdout = [], stderr = [];
